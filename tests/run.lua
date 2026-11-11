@@ -342,6 +342,11 @@ do
   chatLog = {}
   addon.Log("should not appear")
   eq(#chatLog, 0, "chat off silences the activity log")
+  eq(TurnoverDB.log[#TurnoverDB.log][2], "should not appear", "log is saved even with chat off")
+  check(#TurnoverDB.log > 10, "scan activity saved to the log")
+  for i = 1, 600 do addon.Log("line %d", i) end
+  eq(#TurnoverDB.log, 500, "saved log keeps the last 500 lines")
+  eq(TurnoverDB.log[500][2], "line 600", "newest line last")
 end
 
 ---------------------------------------------------------------------------

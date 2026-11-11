@@ -27,10 +27,17 @@ local function say(fmt, ...)
   print("|cff8ab4f8Turnover|r " .. fmt:format(...))
 end
 
--- Activity log: same prefix, grey text, and only when chat logging is on.
+-- Activity log: printed in grey when chat logging is on, and always kept in
+-- TurnoverDB.log (the last LOG_KEEP lines) so it can be read after a /reload.
+local LOG_KEEP = 500
 function ns.Log(fmt, ...)
-  if db and db.settings.chat then
-    print("|cff8ab4f8Turnover|r |cffa0a0a0" .. fmt:format(...) .. "|r")
+  if not db then return end
+  local text = fmt:format(...)
+  local log = db.log
+  log[#log + 1] = { time(), text }
+  while #log > LOG_KEEP do table.remove(log, 1) end
+  if db.settings.chat then
+    print("|cff8ab4f8Turnover|r |cffa0a0a0" .. text .. "|r")
   end
 end
 
@@ -206,6 +213,7 @@ local function initDB()
     if db.settings.fullInterval == 300 then db.settings.fullInterval = 60 end
     db.settingsVersion = 2
   end
+  db.log = db.log or {}
   if not db.watch then
     db.watch = {}
     for _, id in ipairs(DEFAULT_WATCH) do db.watch[id] = true end
