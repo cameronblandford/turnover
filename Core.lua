@@ -11,6 +11,7 @@ local DEFAULT_SETTINGS = {
   chat = true,         -- print what the addon is doing to the chat log
   full = true,         -- periodically scan the whole auction house
   fullInterval = 60,   -- seconds between full scans
+  fullMaxGap = 3600,   -- full scans can be further apart and still count
 }
 local MIN_FULL_INTERVAL = 60
 local DEFAULT_WATCH = { 2770, 2840 } -- Copper Ore, Copper Bar
@@ -87,7 +88,7 @@ end
 
 -- Full scans: recorded quietly (one summary line per scan instead).
 function ns.RecordFull(itemID, listings, t)
-  return (ns.Store.Record(db, ns.FullRealmKey(), itemID, listings, t, db.settings.maxGap))
+  return (ns.Store.Record(db, ns.FullRealmKey(), itemID, listings, t, db.settings.fullMaxGap))
 end
 
 function ns.FullItemIDs()
@@ -178,7 +179,8 @@ local function onUpdate(_, elapsed)
   if full then full.Tick(t) end
   local s = db.settings
   local idle = t - scanner.LastUserActivity() >= s.idle
-  if full and s.full and t >= nextFullAt and idle and not scanner.Busy() and not full.Busy() then
+  if full and s.full and t >= nextFullAt and t >= full.ReadyAt() and idle
+      and not scanner.Busy() and not full.Pending() then
     nextFullAt = t + s.fullInterval
     if full.Start(t) then ns.Log("Full scan started.") end
   elseif s.auto and t >= nextScanAt and idle and not scanner.Busy()
@@ -352,7 +354,10 @@ SlashCmdList.TURNOVER = function(msg)
   elseif cmd == "full" then
     local v, n = rest:lower(), tonumber(rest)
     if v == "on" or v == "off" then db.settings.full = (v == "on") end
-    if n then db.settings.fullInterval = math.max(MIN_FULL_INTERVAL, math.floor(n)) end
+    if n then
+      db.settings.fullInterval = math.max(MIN_FULL_INTERVAL, math.floor(n))
+      db.settings.fullRefusedGap = nil -- start learning the server's limit afresh
+    end
     if not full then say("This client has no full-scan API.") return end
     say("Full scan %s, every %s.", db.settings.full and "on" or "off", ns.FormatDuration(db.settings.fullInterval))
   elseif cmd == "chat" then

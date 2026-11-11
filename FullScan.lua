@@ -15,7 +15,13 @@ ns.FullScan = Full
 
 local BAND_MIN = { [0] = 0, [1] = 30 * 60, [2] = 2 * 3600, [3] = 12 * 3600 }
 local ROWS_PER_TICK = 2000
-local WAIT_TIMEOUT = 60
+local WAIT_TIMEOUT = 20 -- a scan normally answers within a few seconds
+local MAX_BACKOFF = 15 * 60
+
+-- The server can refuse full scans that come too soon after the last one
+-- (retail allows one every 15 minutes). A refused scan just never answers,
+-- so after each one we wait longer before asking again, up to 15 minutes.
+local failures, readyAt, lastSuccessAt = 0, 0, nil
 
 local state = "idle" -- "idle" | "waiting" | "reading"
 local ours = false
@@ -37,7 +43,16 @@ function Full.Install()
   end)
 end
 
-function Full.Busy() return state ~= "idle" end
+-- Reading results (watchlist scans wait); waiting on a reply doesn't block them.
+function Full.Busy() return state == "reading" end
+function Full.Pending() return state ~= "idle" end
+-- Earliest time to ask again: after the backoff, and never sooner after the
+-- last good scan than a gap the server has already refused.
+function Full.ReadyAt()
+  local learned = ns.Settings().fullRefusedGap
+  if learned and lastSuccessAt then return math.max(readyAt, lastSuccessAt + learned + 30) end
+  return readyAt
+end
 
 function Full.Start(t)
   if state ~= "idle" then return false end
@@ -127,6 +142,13 @@ local function finish(t)
   ns.Log("Full scan%s: %d auctions of %d items%s. %s",
     source == "other" and " (started elsewhere)" or "", auctions, items, took, result)
   state, byItem = "idle", nil
+  if failures > 0 and lastSuccessAt then
+    local learned = ns.Settings().fullRefusedGap
+    ns.Log("Full scans are working again: this one came %s after the last successful scan.%s",
+      ns.FormatDuration(t - lastSuccessAt),
+      learned and (" Spacing them at least %s apart from now on."):format(ns.FormatDuration(learned + 30)) or "")
+  end
+  failures, readyAt, lastSuccessAt = 0, 0, t
   ns.DataChanged()
 end
 
@@ -135,7 +157,19 @@ function Full.Tick(t)
     if t - sentAt > WAIT_TIMEOUT then
       state = "idle"
       if source == "scan" then
-        ns.Log("Full scan got no reply. The server may limit how often full scans can run; will retry.")
+        failures = failures + 1
+        if lastSuccessAt then -- remember the longest gap the server refused
+          local s = ns.Settings()
+          s.fullRefusedGap = math.max(s.fullRefusedGap or 0, math.floor(sentAt - lastSuccessAt))
+        end
+        local delay = math.min(MAX_BACKOFF, ns.Settings().fullInterval * 2 ^ (failures - 1))
+        readyAt = t + delay
+        if failures == 1 then
+          ns.Log("Full scan got no reply; the server probably limits how often full scans can run. "
+            .. "Trying again in %s, waiting longer each time (up to 15m).", ns.FormatDuration(delay))
+        else
+          ns.Log("Full scan still refused. Next try in %s.", ns.FormatDuration(delay))
+        end
       end
     end
     return

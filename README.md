@@ -54,7 +54,11 @@ single page and includes a watched item, it's recorded at no extra cost.
 Every minute (while you're idle at the auction house) it also takes a
 snapshot of the whole auction house with `C_AuctionHouse.ReplicateItems`.
 That gives rough rates for every item, not just the watchlist. Results are
-read a chunk per frame to avoid a hitch. If another addon runs a full scan,
+read a chunk per frame to avoid a hitch. If the server refuses a full scan for coming too soon (retail allows one
+every 15 minutes), Turnover waits longer before each retry, up to 15 minutes.
+It also remembers the longest gap that was refused and won't ask sooner
+than that again. Full scans up to an hour apart still count toward rates.
+If another addon runs a full scan,
 Turnover reads those results too. Watched items keep using their
 per-minute data, which is much more precise for fast sellers.
 

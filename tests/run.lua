@@ -467,7 +467,7 @@ do
   -- The server ignores a full scan request.
   noReply = true
   advance(300 + 61)
-  check(saw("Full scan got no reply."), "chat: no reply")
+  check(saw("Full scan got no reply;"), "chat: no reply")
   noReply = false
 
   -- Another addon (or the player) starts a full scan: its results are used.
@@ -576,6 +576,64 @@ do
   check(saw("Couldn't add the Top movers tab:"), "build failure reported in chat")
   SlashCmdList.TURNOVER("top")
   check(saw("Can't show Top movers: the tab failed to build:"), "/turnover top repeats the build error")
+end
+
+---------------------------------------------------------------------------
+-- Server allows one full scan per 15 minutes: back off, keep the watchlist
+-- going, and still count sales across the long gap
+
+do
+  newEnv()
+  timers = {}
+  local rep = {}
+  for i = 1, 6 do rep[#rep + 1] = { itemID = 2589, count = 5, buyout = 100 + i } end
+  local calls, answered, lastOk, searches = 0, 0, -math.huge, 0
+  _G.Enum = { AuctionHouseSortOrder = { Price = 0 } }
+  _G.C_AuctionHouse = {
+    MakeItemKey = function(id) return { itemID = id } end,
+    IsThrottledMessageSystemReady = function() return true end,
+    SendSearchQuery = function()
+      searches = searches + 1
+      after(0.2, function() fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2770) end)
+    end,
+    HasFullCommoditySearchResults = function() return true end,
+    GetNumCommoditySearchResults = function() return 1 end,
+    GetCommoditySearchResultInfo = function() return { auctionID = 9, quantity = 50, unitPrice = 7, timeLeftSeconds = 80000 } end,
+    ReplicateItems = function()
+      calls = calls + 1
+      if clock - lastOk >= 900 then
+        lastOk = clock
+        answered = answered + 1
+        after(2, function() fire("REPLICATE_ITEM_LIST_UPDATE") end)
+      end
+    end,
+    GetNumReplicateItems = function() return #rep end,
+    GetReplicateItemInfo = function(i)
+      local r = rep[i + 1]
+      return "x", nil, r.count, 1, true, 0, nil, r.buyout, 1, r.buyout, 0, nil, nil, nil, nil, 0, r.itemID, true
+    end,
+    GetReplicateItemTimeLeft = function() return 3 end,
+  }
+  local addon = loadAddon()
+  fire("AUCTION_HOUSE_SHOW")
+  advance(30)
+  eq(answered, 1, "first full scan answered")
+  local searchesBefore = searches
+  table.remove(rep, 1); table.remove(rep, 1) -- 10 Linen Cloth bought
+  advance(20 * 60)
+  check(saw("Full scan got no reply; the server probably limits how often full scans can run."), "chat: first refusal explained")
+  check(saw("Full scan still refused. Next try in"), "chat: later refusals are short")
+  check(calls <= 7, ("backed off instead of asking every minute (%d requests in 20m)"):format(calls))
+  check(answered >= 2, "a later full scan got through")
+  check(saw("Full scans are working again: this one came"), "chat: recovery noted")
+  check(saw("Spacing them at least"), "chat: learned spacing announced")
+  check((TurnoverDB.settings.fullRefusedGap or 0) >= 500, "refused gap remembered")
+  local callsAfter = calls
+  advance(5 * 60)
+  eq(calls, callsAfter, "no requests sooner than the refused gap after recovering")
+  check(searches - searchesBefore >= 15, "watchlist kept scanning while full scans were refused")
+  local s = addon.Summary(2589)
+  eq(s and s.units, 10, "sales across a 15+ minute gap between full scans are counted")
 end
 
 realPrint(("%d passed, %d failed"):format(passed, failures))
