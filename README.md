@@ -31,6 +31,15 @@ Purchases that happen while you're away from the auction house are never seen.
 Your own searches are used as well. If one of them returns every result on a
 single page and includes a watched item, it's recorded at no extra cost.
 
+### Full scans
+
+Every 5 minutes (while you're idle at the auction house) it also takes a
+snapshot of the whole auction house with `C_AuctionHouse.ReplicateItems`.
+That gives rough rates for every item, not just the watchlist. Results are
+read a chunk per frame to avoid a hitch. If another addon runs a full scan,
+Turnover reads those results too. Watched items keep using their
+per-minute data, which is much more precise for fast sellers.
+
 ### Activity log
 
 While the auction house is open, it reports what it's doing in grey in the
@@ -71,6 +80,7 @@ Turnover detects the auction house API at runtime:
 | `/turnover scan` | Scan now (auction house must be open) |
 | `/turnover auto on\|off` | Automatic scanning |
 | `/turnover interval <seconds>` | Time between scans (minimum 20) |
+| `/turnover full on\|off\|<seconds>` | Whole-auction-house scans (default every 300s, minimum 60) |
 | `/turnover chat on\|off` | Activity log in the chat window |
 | `/turnover reset <item>\|all` | Forget history on this realm and faction |
 

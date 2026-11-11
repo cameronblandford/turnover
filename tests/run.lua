@@ -37,7 +37,7 @@ local function newEnv()
   _G.TooltipDataProcessor, _G.Enum = nil, nil
   _G.QueryAuctionItems, _G.GetAuctionItemInfo, _G.GetNumAuctionItems = nil, nil, nil
   _G.C_AuctionHouse, _G.AuctionFrame = nil, nil
-  local names = { [2770] = { "Copper Ore", 1 }, [2840] = { "Copper Bar", 1 } }
+  local names = { [2770] = { "Copper Ore", 1 }, [2840] = { "Copper Bar", 1 }, [2589] = { "Linen Cloth", 1 } }
   _G.C_Item = {
     GetItemInfo = function(id)
       local n = names[id]
@@ -84,7 +84,7 @@ local function after(delay, fn) timers[#timers + 1] = { at = clock + delay, fn =
 
 local function loadAddon()
   local ns = {}
-  for _, file in ipairs({ "Diff.lua", "Store.lua", "Scanner_Legacy.lua", "Scanner_Modern.lua",
+  for _, file in ipairs({ "Diff.lua", "Store.lua", "Scanner_Legacy.lua", "Scanner_Modern.lua", "FullScan.lua",
                           "Core.lua", "Tooltip.lua" }) do
     local chunk = assert(loadfile(file))
     chunk("Turnover", ns)
@@ -250,7 +250,7 @@ do
   eq(rec and #rec.last.listings, 60, "both result pages were read")
   local bars = addon.Store.Get(TurnoverDB, "Testrealm-Horde", 2840)
   eq(bars and #bars.last.listings, 5, "Copper Bar scanned too")
-  check(saw("Auction house open. Scanning every 60s"), "chat: AH open")
+  check(saw("Auction house open. Scanning while you're idle: watchlist every 60s."), "chat: AH open")
   check(saw("Scanning 2 items."), "chat: scan start")
   check(saw("Copper Ore: 1200 listed in 60 auctions, first look"), "chat: first look")
 
@@ -359,6 +359,95 @@ do
   eq(units, 150, "partial and full commodity purchases counted")
   check(avg and math.abs(avg - (50 * 10 + 100 * 11) / 150) < 1e-6, "average unit price")
   check(userSearches >= 4, "both watched items searched each round")
+end
+
+---------------------------------------------------------------------------
+-- Retail full scans (ReplicateItems)
+
+do
+  newEnv()
+  timers = {}
+  local search = { -- what the per-item commodity search returns for Copper Ore
+    { auctionID = 1, quantity = 200, unitPrice = 10, timeLeftSeconds = 40000 },
+    { auctionID = 2, quantity = 100, unitPrice = 11, timeLeftSeconds = 40000 },
+  }
+  -- The replicate list reports commodity buyouts per unit; Turnover must notice.
+  local rep = {
+    { itemID = 2770, count = 200, buyout = 10 },
+    { itemID = 2770, count = 100, buyout = 11 },
+  }
+  for i = 1, 5 do rep[#rep + 1] = { itemID = 2589, count = 5, buyout = 20 + i } end
+  local replicateCalls, noReply = 0, false
+  _G.Enum = { AuctionHouseSortOrder = { Price = 0 } }
+  _G.C_AuctionHouse = {
+    MakeItemKey = function(id) return { itemID = id } end,
+    IsThrottledMessageSystemReady = function() return true end,
+    SendSearchQuery = function(itemKey)
+      if itemKey.itemID == 2770 then
+        after(0.2, function() fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2770) end)
+      else
+        after(0.2, function() fire("ITEM_SEARCH_RESULTS_UPDATED", itemKey) end)
+      end
+    end,
+    HasFullCommoditySearchResults = function() return true end,
+    GetNumCommoditySearchResults = function() return #search end,
+    GetCommoditySearchResultInfo = function(_, i) return search[i] end,
+    HasFullItemSearchResults = function() return true end,
+    GetNumItemSearchResults = function() return 0 end,
+    GetItemSearchResultInfo = function() end,
+    ReplicateItems = function()
+      replicateCalls = replicateCalls + 1
+      if not noReply then after(2, function() fire("REPLICATE_ITEM_LIST_UPDATE") end) end
+    end,
+    GetNumReplicateItems = function() return #rep end,
+    GetReplicateItemInfo = function(i)
+      local r = rep[i + 1]
+      if not r then return end
+      return "x", nil, r.count, 1, true, 0, nil, r.buyout, 1, r.buyout, 0, nil, nil, nil, nil, 0, r.itemID, true
+    end,
+    GetReplicateItemTimeLeft = function() return 3 end,
+  }
+  local addon = loadAddon()
+  eq(addon.FullScan.Available(), true, "full-scan API detected")
+  fire("AUCTION_HOUSE_SHOW")
+  check(saw("full scan every 5m, watchlist every 60s"), "chat: AH open mentions full scan")
+  advance(20)
+  eq(replicateCalls, 1, "one full scan after opening")
+  check(saw("Full scan started."), "chat: full scan started")
+  check(saw("Full scan: 7 auctions of 2 items in 2s. First full scan"), "chat: first full scan summary")
+  eq(TurnoverDB.settings.fullPricing, "unit", "per-unit replicate buyouts detected against the watchlist scan")
+  local linen = addon.Store.Get(TurnoverDB, "Testrealm-Horde#full", 2589)
+  eq(linen and #linen.last.listings, 5, "unwatched item stored from the full scan")
+  eq(linen and linen.last.listings[1].buyout % 5, 0, "buyout converted to per auction")
+
+  -- Two Linen auctions bought before the next full scan.
+  table.remove(rep, 3); table.remove(rep, 3)
+  advance(300)
+  eq(replicateCalls, 2, "second full scan five minutes later")
+  check(saw("10 units sold across 1 item since the last full scan."), "chat: full scan sales")
+  local s = addon.Summary(2589)
+  check(s and s.fromFull and s.units == 10, "unwatched item's rate comes from full scans")
+  local w = addon.Summary(2770)
+  check(w and not w.fromFull, "watched item's rate comes from the watchlist scans")
+
+  -- The server ignores a full scan request.
+  noReply = true
+  advance(300 + 61)
+  check(saw("Full scan got no reply."), "chat: no reply")
+  noReply = false
+
+  -- Another addon (or the player) starts a full scan: its results are used.
+  C_AuctionHouse.ReplicateItems()
+  advance(3)
+  check(saw("Full scan (started elsewhere): 5 auctions of 2 items."), "chat: someone else's full scan")
+
+  -- Turning full scans off stops them.
+  SlashCmdList.TURNOVER("full off")
+  local n = replicateCalls
+  advance(700)
+  eq(replicateCalls, n, "full off stops full scans")
+  SlashCmdList.TURNOVER("full 10")
+  eq(TurnoverDB.settings.fullInterval, 60, "full interval has a floor")
 end
 
 realPrint(("%d passed, %d failed"):format(passed, failures))
