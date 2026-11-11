@@ -82,6 +82,7 @@ function ns.OnSnapshot(itemID, listings, t, source)
   if not db then return end
   local diff, reason = ns.Store.Record(db, ns.RealmKey(), itemID, listings, t, db.settings.maxGap)
   ns.Log("%s", describe(itemID, listings, diff, reason, source))
+  ns.DataChanged()
 end
 
 -- Full scans: recorded quietly (one summary line per scan instead).
@@ -95,21 +96,48 @@ function ns.FullItemIDs()
   return ids
 end
 
-local function summarize(rec, t, fromFull)
+local function summarize(rec, t, fromFull, window)
   if not rec then return nil end
-  local rate, seen, avg, units = ns.Store.Rate(rec, t, db.settings.window)
+  local rate, seen, avg, units = ns.Store.Rate(rec, t, window)
   return { rate = rate, seen = seen, avg = avg, units = units, fromFull = fromFull,
            supply = rec.supply, lastAt = rec.last and rec.last.t }
 end
 
 -- Prefers the per-minute watchlist data; falls back to full scans.
-function ns.Summary(itemID, t)
+function ns.Summary(itemID, t, window)
   if not db then return nil end
-  t = t or time()
-  local watched = summarize(ns.Store.Get(db, ns.RealmKey(), itemID), t, false)
+  t, window = t or time(), window or db.settings.window
+  local watched = summarize(ns.Store.Get(db, ns.RealmKey(), itemID), t, false, window)
   if watched and watched.seen > 0 then return watched end
-  return summarize(ns.Store.Get(db, ns.FullRealmKey(), itemID), t, true) or watched
+  return summarize(ns.Store.Get(db, ns.FullRealmKey(), itemID), t, true, window) or watched
 end
+
+ns.MIN_SEEN = 10 * 60 -- don't rank or show a rate based on less than 10 minutes of watching
+
+-- Every item with sales in the last `window` seconds, unsorted:
+-- { id, rate (units/hr), avg (copper/unit), gold (copper/hr), supply, seen, fromFull }
+function ns.TopMovers(window, t)
+  if not db then return {} end
+  t = t or time()
+  local ids = {}
+  for id in pairs(db.realms[ns.RealmKey()] or {}) do ids[id] = true end
+  for id in pairs(db.realms[ns.FullRealmKey()] or {}) do ids[id] = true end
+  local out = {}
+  for id in pairs(ids) do
+    local s = ns.Summary(id, t, window)
+    if s and s.seen >= ns.MIN_SEEN and s.units > 0 then
+      local avg = s.avg or 0
+      out[#out + 1] = { id = id, rate = s.rate, avg = avg, gold = s.rate * avg,
+                        supply = s.supply or 0, seen = s.seen, fromFull = s.fromFull }
+    end
+  end
+  return out
+end
+
+local function dataChanged()
+  if ns.OnDataChanged then ns.OnDataChanged() end
+end
+ns.DataChanged = dataChanged
 
 function ns.FormatRate(r)
   if r >= 10 then return ("%d"):format(math.floor(r + 0.5)) end

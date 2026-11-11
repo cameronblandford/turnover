@@ -13,6 +13,33 @@ local function eq(a, b, label) check(a == b, ("%s (got %s, want %s)"):format(lab
 -- Minimal WoW environment
 
 local clock = 0
+local after -- defined below; used by the C_Timer mock
+
+-- A stand-in for any WoW widget: tracks scripts, events and shown state, and
+-- accepts every other method call. Create* methods return more widgets.
+local function widget()
+  local w = { scripts = {}, events = {}, shown = true }
+  local methods = {
+    SetScript = function(self, n, fn) self.scripts[n] = fn end,
+    HookScript = function(self, n, fn)
+      local old = self.scripts[n]
+      self.scripts[n] = function(...) if old then old(...) end fn(...) end
+    end,
+    RegisterEvent = function(self, e) self.events[e] = true end,
+    Show = function(self) self.shown = true end,
+    Hide = function(self) self.shown = false end,
+    SetShown = function(self, v) self.shown = v and true or false end,
+    IsShown = function(self) return self.shown end,
+    GetHeight = function() return 400 end,
+    GetFrameLevel = function() return 1 end,
+    SetText = function(self, t) self.text = t end,
+  }
+  return setmetatable(w, { __index = function(_, k)
+    if methods[k] then return methods[k] end
+    if type(k) == "string" and k:match("^Create") then return function() return widget() end end
+    return function() end
+  end })
+end
 local chatLog = {}
 local function saw(text)
   for _, line in ipairs(chatLog) do if line:find(text, 1, true) then return true end end
@@ -32,8 +59,6 @@ local function newEnv()
   _G.UnitFactionGroup = function() return "Horde" end
   _G.SlashCmdList = {}
   _G.TurnoverDB = nil
-  _G.GameTooltip = { HookScript = function() end }
-  _G.ItemRefTooltip = { HookScript = function() end }
   _G.TooltipDataProcessor, _G.Enum = nil, nil
   _G.QueryAuctionItems, _G.GetAuctionItemInfo, _G.GetNumAuctionItems = nil, nil, nil
   _G.C_AuctionHouse, _G.AuctionFrame = nil, nil
@@ -46,12 +71,14 @@ local function newEnv()
     RequestLoadItemDataByID = function() end,
   }
   _G.CreateFrame = function()
-    local f = { scripts = {}, events = {} }
-    function f:SetScript(k, fn) self.scripts[k] = fn end
-    function f:RegisterEvent(e) self.events[e] = true end
+    local f = widget()
     frames[#frames + 1] = f
     return f
   end
+  _G.GameTooltip, _G.ItemRefTooltip = widget(), widget()
+  _G.AuctionHouseFrame = nil
+  _G.C_Timer = { After = function(d, fn) after(d, fn) end }
+  _G.ITEM_QUALITY_COLORS = { [1] = { r = 1, g = 1, b = 1 } }
   _G.hooksecurefunc = function(a, b, c)
     local tbl, name, hook = _G, a, b
     if type(a) == "table" then tbl, name, hook = a, b, c end
@@ -80,12 +107,12 @@ local function advance(seconds)
     end
   end
 end
-local function after(delay, fn) timers[#timers + 1] = { at = clock + delay, fn = fn } end
+after = function(delay, fn) timers[#timers + 1] = { at = clock + delay, fn = fn } end
 
 local function loadAddon()
   local ns = {}
   for _, file in ipairs({ "Diff.lua", "Store.lua", "Scanner_Legacy.lua", "Scanner_Modern.lua", "FullScan.lua",
-                          "Core.lua", "Tooltip.lua" }) do
+                          "Core.lua", "Tooltip.lua", "UI.lua" }) do
     local chunk = assert(loadfile(file))
     chunk("Turnover", ns)
   end
@@ -407,6 +434,8 @@ do
     end,
     GetReplicateItemTimeLeft = function() return 3 end,
   }
+  _G.AuctionHouseFrame = widget()
+  AuctionHouseFrame.Tabs = { widget(), widget(), widget() }
   local addon = loadAddon()
   eq(addon.FullScan.Available(), true, "full-scan API detected")
   fire("AUCTION_HOUSE_SHOW")
@@ -448,6 +477,37 @@ do
   eq(replicateCalls, n, "full off stops full scans")
   SlashCmdList.TURNOVER("full 10")
   eq(TurnoverDB.settings.fullInterval, 60, "full interval has a floor")
+
+  -- Top movers: ranking query.
+  local movers = addon.TopMovers(3600)
+  eq(#movers, 1, "only items with sales and 10+ minutes of data are ranked")
+  eq(movers[1] and movers[1].id, 2589, "Linen Cloth ranked")
+  check(movers[1] and movers[1].gold > 0 and movers[1].fromFull, "value/hr from full-scan data")
+  eq(#addon.TopMovers(1), 0, "nothing in a 1-second window")
+
+  -- Top movers: the tab and panel.
+  local UI = addon.UI
+  check(UI.tab ~= nil and UI.panel ~= nil, "tab and panel built when the AH opened")
+  eq(UI.panel:IsShown(), false, "panel starts hidden")
+  UI.tab.scripts.OnClick(UI.tab)
+  eq(UI.panel:IsShown(), true, "clicking the tab shows the panel")
+  eq(#UI.Data(), 1, "panel lists the ranked item")
+  eq(UI.rows[1] and UI.rows[1].itemID, 2589, "first row is Linen Cloth")
+  eq(UI.rows[2] and UI.rows[2]:IsShown(), false, "other rows hidden")
+  UI.rows[1].scripts.OnEnter(UI.rows[1])
+  UI.rows[1].scripts.OnLeave(UI.rows[1])
+  UI.panel.scripts.OnMouseWheel(UI.panel, -1)
+  addon.OnDataChanged()
+  advance(1)
+  eq(UI.rows[1].itemID, 2589, "refresh after new data keeps the row")
+  TurnoverDB.settings.topWindow = 4
+  UI.Refresh()
+  eq(#UI.Data(), 1, "7-day window")
+  AuctionHouseFrame.Tabs[1].scripts.OnClick(AuctionHouseFrame.Tabs[1])
+  eq(UI.panel:IsShown(), false, "a Blizzard tab hides the panel")
+  UI.tab.scripts.OnClick(UI.tab)
+  fire("AUCTION_HOUSE_CLOSED")
+  eq(UI.panel:IsShown(), false, "closing the auction house hides the panel")
 end
 
 realPrint(("%d passed, %d failed"):format(passed, failures))

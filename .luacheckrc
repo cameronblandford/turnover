@@ -10,4 +10,7 @@ read_globals = {
   "GetCoinTextureString", "GetItemInfo", "GetNumAuctionItems", "GetRealmName", "GetTime",
   "ItemRefTooltip", "NUM_AUCTION_ITEMS_PER_PAGE", "QueryAuctionItems", "TooltipDataProcessor",
   "UnitFactionGroup", "hooksecurefunc", "time", "unpack", "wipe",
+  "C_Timer", "ChatEdit_InsertLink", "GetItemIcon", "IsModifiedClick", "ITEM_QUALITY_COLORS",
+  "PanelTemplates_DeselectTab", "PanelTemplates_SelectTab", "PanelTemplates_TabResize",
+  "PlaySound", "SOUNDKIT",
 }

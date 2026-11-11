@@ -127,6 +127,7 @@ local function finish(t)
   ns.Log("Full scan%s: %d auctions of %d items%s. %s",
     source == "other" and " (started elsewhere)" or "", auctions, items, took, result)
   state, byItem = "idle", nil
+  ns.DataChanged()
 end
 
 function Full.Tick(t)

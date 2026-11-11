@@ -1,8 +1,9 @@
 # Turnover
 
 A World of Warcraft addon that estimates **how fast items sell** on the auction
-house, built for WoW Forever. It adds one line to item tooltips, and has no
-windows, minimap button or extra auction house tabs:
+house, built for WoW Forever. It adds one line to item tooltips and a
+**Top movers** tab to the auction house, and nothing else: no windows or
+minimap button:
 
 ```
 Turnover ~142/hr at 12s 30c · 3.2h seen
@@ -11,6 +12,23 @@ Turnover ~142/hr at 12s 30c · 3.2h seen
 That line reads: about 142 units sold per hour, at an average of 12s 30c each,
 based on 3.2 hours of watching. It only appears once an item has been watched
 for 10 minutes.
+
+### Top movers tab
+
+A tab at the bottom of the auction house window lists the items selling
+fastest right now:
+
+- **Columns:** units sold per hour, average sale price, value sold per
+  hour, number listed, and how long the item has been watched.
+- **Time window:** pick the last 1h, 6h, 24h or 7d. Click a column header
+  to sort by it.
+- **Interaction:** hover a row for the item tooltip; shift-click to link
+  it in chat.
+- **What's ranked:** items with at least 10 minutes of data and some sales
+  in the window.
+
+It's a separate panel over the auction window. It doesn't change
+Blizzard's own tabs, so buying and posting work exactly as before.
 
 ## How it works
 

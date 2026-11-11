@@ -14,3 +14,4 @@ Scanner_Modern.lua
 FullScan.lua
 Core.lua
 Tooltip.lua
+UI.lua
