@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: Turnover
+## Notes: Estimates how fast items sell on the auction house. One tooltip line, no windows.
+## Author: Cameron Blandford
+## Version: 0.1.0
+## SavedVariables: TurnoverDB
+## X-License: MIT
+## X-Website: https://github.com/cameronblandford/turnover
+
+Diff.lua
+Store.lua
+Scanner_Legacy.lua
+Scanner_Modern.lua
+Core.lua
+Tooltip.lua
