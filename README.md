@@ -2,7 +2,7 @@
 
 A World of Warcraft addon that estimates **how fast items sell** on the auction
 house, built for WoW Forever. It adds one line to item tooltips, and has no
-windows, minimap button, chat spam or extra auction house tabs:
+windows, minimap button or extra auction house tabs:
 
 ```
 Turnover ~142/hr at 12s 30c · 3.2h seen
@@ -31,6 +31,20 @@ Purchases that happen while you're away from the auction house are never seen.
 Your own searches are used as well. If one of them returns every result on a
 single page and includes a watched item, it's recorded at no extra cost.
 
+### Activity log
+
+While the auction house is open, it reports what it's doing in grey in the
+chat window:
+
+```
+Turnover Scanning 2 items.
+Turnover Copper Ore: 1100 listed in 55 auctions, 100 sold, 1 relisted
+Turnover Copper Bar: 50 listed in 5 auctions, none sold
+Turnover Put your last search back.
+```
+
+Turn it off with `/turnover chat off`.
+
 ### Staying out of the way
 
 - It only scans while the auction house is open, and only after you've been
@@ -57,6 +71,7 @@ Turnover detects the auction house API at runtime:
 | `/turnover scan` | Scan now (auction house must be open) |
 | `/turnover auto on\|off` | Automatic scanning |
 | `/turnover interval <seconds>` | Time between scans (minimum 20) |
+| `/turnover chat on\|off` | Activity log in the chat window |
 | `/turnover reset <item>\|all` | Forget history on this realm and faction |
 
 Copper Ore and Copper Bar are watched by default. Data is stored per realm and

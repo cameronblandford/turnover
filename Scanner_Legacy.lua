@@ -84,6 +84,7 @@ local function nextJob()
       return
     end
     -- Item not in the client cache yet; ItemInfo asked for it, try next round.
+    ns.Log("Skipped item %d: item info not loaded yet, will retry next scan.", itemID)
   end
   if ranThisBatch and userQuery and (not AuctionFrame or AuctionFrame:IsShown()) then
     restorePending = true
@@ -98,7 +99,7 @@ local function handleOurPage(rows, total)
     job.needSend = true
     job.sentAt = nil
   else
-    ns.OnSnapshot(job.itemID, job.listings, time())
+    ns.OnSnapshot(job.itemID, job.listings, time(), "scan")
     nextJob()
   end
 end
@@ -119,7 +120,7 @@ local function capturePassive(rows, n, total)
       local matches
       if exact then matches = lname == text else matches = lname:find(text, 1, true) ~= nil end
       if matches and (tonumber(rarity) or -1) <= (quality or 0) then
-        ns.OnSnapshot(itemID, listingsFor(itemID, rows), time())
+        ns.OnSnapshot(itemID, listingsFor(itemID, rows), time(), "search")
       end
     end
   end
@@ -156,7 +157,10 @@ function Legacy.Install()
     userQuery = { n = select("#", ...), ... }
     if restoring then return end
     lastUserAt = GetTime()
-    if job or #queue > 0 then abort() end -- the player is searching; get out of the way
+    if job or #queue > 0 then -- the player is searching; get out of the way
+      abort()
+      ns.Log("Paused: you're searching. Will scan again once you've been idle a few seconds.")
+    end
   end)
 end
 
@@ -175,9 +179,13 @@ function Legacy.Tick(t)
         ours = true
         local ok = pcall(QueryAuctionItems, job.name, nil, nil, job.page, false, nil, false, true)
         ours = false
-        if not ok then nextJob() end
+        if not ok then
+          ns.Log("%s: search failed, skipped.", job.name)
+          nextJob()
+        end
       end
     elseif job.sentAt and t - job.sentAt > TIMEOUT then
+      ns.Log("%s: no response from the auction house, skipped.", job.name)
       nextJob()
     end
   elseif restorePending and canQuery() then
@@ -185,6 +193,7 @@ function Legacy.Tick(t)
     restoring = true
     pcall(QueryAuctionItems, unpack(userQuery, 1, userQuery.n))
     restoring = false
+    ns.Log("Put your last search back.")
   end
 end
 

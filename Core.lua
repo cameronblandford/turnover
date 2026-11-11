@@ -8,6 +8,7 @@ local DEFAULT_SETTINGS = {
   idle = 8,            -- seconds the player must be idle before a scan starts
   maxGap = 15 * 60,    -- longest gap between snapshots that still counts
   window = 7 * 86400,  -- how far back the rate looks
+  chat = true,         -- print what the addon is doing to the chat log
 }
 local DEFAULT_WATCH = { 2770, 2840 } -- Copper Ore, Copper Bar
 local MIN_INTERVAL = 20
@@ -20,6 +21,13 @@ local frame = CreateFrame("Frame")
 
 local function say(fmt, ...)
   print("|cff8ab4f8Turnover|r " .. fmt:format(...))
+end
+
+-- Activity log: same prefix, grey text, and only when chat logging is on.
+function ns.Log(fmt, ...)
+  if db and db.settings.chat then
+    print("|cff8ab4f8Turnover|r |cffa0a0a0" .. fmt:format(...) .. "|r")
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -44,9 +52,30 @@ end
 function ns.WatchList() return db and db.watch or {} end
 function ns.IsWatched(itemID) return db ~= nil and db.watch[itemID] == true end
 
-function ns.OnSnapshot(itemID, listings, t)
+local function describe(itemID, listings, diff, reason, source)
+  local units = 0
+  for _, l in ipairs(listings) do units = units + l.count end
+  local parts = { ("%s: %d listed in %d auction%s"):format(ns.ItemInfo(itemID) or ("item " .. itemID),
+    units, #listings, #listings == 1 and "" or "s") }
+  if diff then
+    parts[#parts + 1] = diff.soldUnits > 0 and ("%d sold"):format(diff.soldUnits) or "none sold"
+    if diff.listedUnits > 0 then parts[#parts + 1] = ("%d newly listed"):format(diff.listedUnits) end
+    if diff.reposts > 0 then parts[#parts + 1] = ("%d relisted"):format(diff.reposts) end
+    if diff.ambiguous > 0 then parts[#parts + 1] = ("%d gone, maybe expired"):format(diff.ambiguous) end
+  elseif reason == "gap" then
+    parts[#parts + 1] = "too long since the last look, starting fresh"
+  else
+    parts[#parts + 1] = "first look"
+  end
+  local text = table.concat(parts, ", ")
+  if source == "search" then text = text .. " (from your search)" end
+  return text
+end
+
+function ns.OnSnapshot(itemID, listings, t, source)
   if not db then return end
-  ns.Store.Record(db, ns.RealmKey(), itemID, listings, t, db.settings.maxGap)
+  local diff, reason = ns.Store.Record(db, ns.RealmKey(), itemID, listings, t, db.settings.maxGap)
+  ns.Log("%s", describe(itemID, listings, diff, reason, source))
 end
 
 function ns.Summary(itemID, t)
@@ -98,7 +127,10 @@ local function onUpdate(_, elapsed)
   if s.auto and t >= nextScanAt and not scanner.Busy()
       and t - scanner.LastUserActivity() >= s.idle then
     nextScanAt = t + s.interval
-    scanner.Start(watchedIDs())
+    local ids = watchedIDs()
+    if #ids > 0 and scanner.Start(ids) then
+      ns.Log("Scanning %d item%s.", #ids, #ids == 1 and "" or "s")
+    end
   end
 end
 
@@ -133,6 +165,9 @@ frame:SetScript("OnEvent", function(_, event, ...)
   elseif event == "AUCTION_HOUSE_SHOW" then
     nextScanAt = GetTime() + FIRST_SCAN_DELAY
     frame:SetScript("OnUpdate", onUpdate)
+    if db.settings.auto then
+      ns.Log("Auction house open. Scanning every %ds while you're idle.", db.settings.interval)
+    end
   elseif event == "AUCTION_HOUSE_CLOSED" then
     frame:SetScript("OnUpdate", nil)
     scanner.Stop()
@@ -198,6 +233,7 @@ local HELP = {
   "/turnover scan - scan now (auction house must be open)",
   "/turnover auto on|off - scan automatically while the auction house is open",
   "/turnover interval <seconds> - time between automatic scans",
+  "/turnover chat on|off - show what it's doing in the chat log",
   "/turnover reset <item>|all - forget history on this realm",
 }
 
@@ -223,6 +259,10 @@ SlashCmdList.TURNOVER = function(msg)
     local v = rest:lower()
     if v == "on" or v == "off" then db.settings.auto = (v == "on") end
     say("Auto-scan %s.", db.settings.auto and "on" or "off")
+  elseif cmd == "chat" then
+    local v = rest:lower()
+    if v == "on" or v == "off" then db.settings.chat = (v == "on") end
+    say("Chat log %s.", db.settings.chat and "on" or "off")
   elseif cmd == "interval" then
     local n = tonumber(rest)
     if n then db.settings.interval = math.max(MIN_INTERVAL, math.floor(n)) end

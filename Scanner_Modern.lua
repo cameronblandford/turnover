@@ -43,7 +43,11 @@ local function record(itemID, listings, mine)
   local now = GetTime()
   if not mine and now - (lastRecorded[itemID] or -math.huge) < PASSIVE_MIN_GAP then return end
   lastRecorded[itemID] = now
-  ns.OnSnapshot(itemID, listings, time())
+  ns.OnSnapshot(itemID, listings, time(), mine and "scan" or "search")
+end
+
+local function itemName(itemID)
+  return ns.ItemInfo(itemID) or ("item " .. itemID)
 end
 
 function Modern.Install()
@@ -51,7 +55,11 @@ function Modern.Install()
   hooksecurefunc(ah, "SendSearchQuery", function()
     if ours then return end
     lastUserAt = GetTime()
-    if job or #queue > 0 then job = nil; wipe(queue) end
+    if job or #queue > 0 then
+      job = nil
+      wipe(queue)
+      ns.Log("Paused: you're searching. Will scan again once you've been idle a few seconds.")
+    end
   end)
   if ah.SendBrowseQuery then
     hooksecurefunc(ah, "SendBrowseQuery", function() lastUserAt = GetTime() end)
@@ -128,9 +136,13 @@ function Modern.Tick(t)
       ours = true
       local ok = pcall(AH().SendSearchQuery, job.itemKey, sorts, true)
       ours = false
-      if not ok then nextJob() end
+      if not ok then
+        ns.Log("%s: search failed, skipped.", itemName(job.itemID))
+        nextJob()
+      end
     end
   elseif t - job.sentAt > TIMEOUT then
+    ns.Log("%s: no response from the auction house, skipped.", itemName(job.itemID))
     nextJob()
   end
 end

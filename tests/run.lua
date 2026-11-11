@@ -13,6 +13,11 @@ local function eq(a, b, label) check(a == b, ("%s (got %s, want %s)"):format(lab
 -- Minimal WoW environment
 
 local clock = 0
+local chatLog = {}
+local function saw(text)
+  for _, line in ipairs(chatLog) do if line:find(text, 1, true) then return true end end
+  return false
+end
 local frames = {}
 local function newEnv()
   clock = 0
@@ -21,7 +26,8 @@ local function newEnv()
   _G.time = function() return 1800000000 + math.floor(clock) end
   _G.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
   _G.unpack = unpack
-  _G.print = function() end
+  chatLog = {}
+  _G.print = function(s) chatLog[#chatLog + 1] = s end
   _G.GetRealmName = function() return "Testrealm" end
   _G.UnitFactionGroup = function() return "Horde" end
   _G.SlashCmdList = {}
@@ -244,6 +250,9 @@ do
   eq(rec and #rec.last.listings, 60, "both result pages were read")
   local bars = addon.Store.Get(TurnoverDB, "Testrealm-Horde", 2840)
   eq(bars and #bars.last.listings, 5, "Copper Bar scanned too")
+  check(saw("Auction house open. Scanning every 60s"), "chat: AH open")
+  check(saw("Scanning 2 items."), "chat: scan start")
+  check(saw("Copper Ore: 1200 listed in 60 auctions, first look"), "chat: first look")
 
   -- Between scans: 5 ore stacks bought, 1 cancelled and relisted cheaper.
   for _ = 1, 5 do table.remove(ah.listings, 1) end
@@ -254,12 +263,15 @@ do
   eq(units, 100, "5 bought stacks of 20 counted, the repost ignored")
   check(secs >= 55 and secs <= 65, "observed about one interval")
   check(rate > 0, "rate is positive")
+  check(saw("Copper Ore: 1100 listed in 55 auctions, 100 sold, 1 relisted"), "chat: sales and relist")
+  check(saw("Copper Bar: 50 listed in 5 auctions, none sold"), "chat: nothing sold")
 
   -- Player searches while a scan is underway: the scan backs off.
   advance(55)
   while not addon.Scanners.legacy.Busy() do advance(0.1) end
   QueryAuctionItems("copper", nil, nil, 0, false, nil, false, false)
   eq(addon.Scanners.legacy.Busy(), false, "scan aborted when the player searches")
+  check(saw("Paused: you're searching."), "chat: pause")
   advance(0.5)
   -- 'copper' returns 59 ore + 5 bars = 64 > one page: not complete, no passive snapshot.
   local before = rec.last.t
@@ -270,6 +282,7 @@ do
   QueryAuctionItems("copper bar", nil, nil, 0, false, nil, false, false)
   advance(1)
   eq(bars.last.t, time(), "complete player search recorded passively")
+  check(saw("Copper Bar: 50 listed in 5 auctions, none sold (from your search)"), "chat: passive")
 
   -- The next automatic scan waits for the player to be idle, then restores their search.
   local n = #ah.queries
@@ -278,6 +291,7 @@ do
   advance(70)
   local last = ah.queries[#ah.queries]
   eq(last.text, "copper bar", "player's last search re-run after scanning")
+  check(saw("Put your last search back."), "chat: restore")
 
   -- Enough data for the tooltip after ~10 minutes of watching.
   advance(600)
@@ -289,11 +303,15 @@ do
 
   -- Slash commands run without error.
   for _, cmd in ipairs({ "", "help", "watch 2589", "unwatch 2589", "auto off", "auto on", "interval 5",
-                         "reset 2840", "reset all", "watch nonsense", "scan" }) do
+                         "reset 2840", "reset all", "watch nonsense", "scan", "chat on" }) do
     local ok, err = pcall(SlashCmdList.TURNOVER, cmd)
     check(ok, "slash '" .. cmd .. "': " .. tostring(err))
   end
   eq(TurnoverDB.settings.interval, 20, "interval has a floor")
+  SlashCmdList.TURNOVER("chat off")
+  chatLog = {}
+  addon.Log("should not appear")
+  eq(#chatLog, 0, "chat off silences the activity log")
 end
 
 ---------------------------------------------------------------------------

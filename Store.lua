@@ -55,18 +55,23 @@ end
 -- wall clock). Sales are only counted against the previous snapshot when it
 -- is at most maxGap seconds old; after a longer gap too much may have
 -- happened unseen, so the snapshot just becomes the new baseline.
+--
+-- Returns the Diff result, or nil plus "first" / "gap" when there was nothing
+-- to compare against.
 function Store.Record(db, realm, itemID, listings, t, maxGap)
   local rec = Store.Get(db, realm, itemID, true)
-  local last, diff = rec.last, nil
+  local last, diff, reason = rec.last, nil, nil
   if last and t >= last.t and t - last.t <= maxGap then
     diff = ns.Diff.Compare(last.listings, listings, t - last.t)
     Store.AddObservation(rec, last.t, t, diff.soldUnits, diff.soldValue)
+  else
+    reason = last and "gap" or "first"
   end
   local supply = 0
   for _, l in ipairs(listings) do supply = supply + l.count end
   rec.last = { t = t, listings = listings }
   rec.supply = supply
-  return diff
+  return diff, reason
 end
 
 -- Returns unitsPerHour, secondsObserved, averageUnitPrice (or nil), units
