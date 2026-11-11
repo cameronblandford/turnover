@@ -36,6 +36,18 @@ local refreshQueued = false
 
 local function settings() return ns.Settings() end
 
+-- Blizzard's own auction house tabs, never including ours.
+local function blizzardTabs()
+  local tabs = AuctionHouseFrame and AuctionHouseFrame.Tabs
+  local out = {}
+  if type(tabs) == "table" then
+    for _, t in ipairs(tabs) do
+      if t ~= tab then out[#out + 1] = t end
+    end
+  end
+  return out
+end
+
 local function windowIndex()
   local i = settings().topWindow
   return WINDOWS[i] and i or 1
@@ -184,7 +196,7 @@ function UI.ShowPanel()
   panel:Show()
   if PanelTemplates_SelectTab then
     PanelTemplates_SelectTab(tab)
-    for _, t in ipairs(AuctionHouseFrame.Tabs or {}) do PanelTemplates_DeselectTab(t) end
+    for _, t in ipairs(blizzardTabs()) do PanelTemplates_DeselectTab(t) end
   end
   offset = 0
   updateWindowButtons()
@@ -198,19 +210,20 @@ function UI.HidePanel()
 end
 
 local function makeTab(ah)
-  local ok, t = pcall(CreateFrame, "Button", "TurnoverAuctionTab", ah, "AuctionHouseFrameTabTemplate")
-  if not ok or not t or not t.Text then
-    t = CreateFrame("Button", "TurnoverAuctionTab", ah, "PanelTabButtonTemplate")
-  end
+  -- The generic tab template, not AuctionHouseFrameTabTemplate: that one adds
+  -- itself to AuctionHouseFrame.Tabs, putting our tab into Blizzard's tab logic.
+  local last = blizzardTabs()
+  last = last[#last] or _G.AuctionHouseFrameAuctionsTab
+  local t = CreateFrame("Button", "TurnoverAuctionTab", ah, "PanelTabButtonTemplate")
   t:SetText("Top movers")
   if PanelTemplates_TabResize then pcall(PanelTemplates_TabResize, t, 0) end
-  local last = ah.Tabs and ah.Tabs[#ah.Tabs]
-  if last then
+  if last and last ~= t then
     t:SetPoint("LEFT", last, "RIGHT", 3, 0)
   else
     t:SetPoint("TOPLEFT", ah, "BOTTOMLEFT", 20, 2)
   end
   if PanelTemplates_DeselectTab then PanelTemplates_DeselectTab(t) end
+  t:Show()
   t:SetScript("OnClick", function()
     if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB) end
     UI.ShowPanel()
@@ -291,7 +304,7 @@ local function build()
   empty:SetPoint("CENTER", panel, "CENTER", 0, 0)
   empty:SetWidth(420)
   empty:SetText("No sales seen in this time window yet. Keep the auction house open for a while: "
-    .. "full scans run every few minutes, and items need 10 minutes of watching to be ranked.")
+    .. "full scans run every minute, and items need 10 minutes of watching to be ranked.")
 
   rows = {}
   UI.panel, UI.tab, UI.rows = panel, tab, rows -- for tests and debugging
@@ -303,19 +316,47 @@ local function build()
 
   -- Any Blizzard tab or display change puts the normal view back.
   if ah.SetDisplayMode then hooksecurefunc(ah, "SetDisplayMode", UI.HidePanel) end
-  for _, t in ipairs(ah.Tabs or {}) do t:HookScript("OnClick", UI.HidePanel) end
+  for _, t in ipairs(blizzardTabs()) do t:HookScript("OnClick", UI.HidePanel) end
+  ns.Log("Added the Top movers tab to the auction house.")
+end
+
+-- The auction window is load-on-demand, and AUCTION_HOUSE_SHOW can arrive
+-- before it exists, so try at every point it might have appeared. WoW hides
+-- Lua errors by default, so a failed build is reported in chat instead.
+local buildError
+local function tryBuild()
+  if panel or buildError or not AuctionHouseFrame then return end
+  local ok, err = pcall(build)
+  if not ok then
+    buildError = tostring(err)
+    ns.Log("Couldn't add the Top movers tab: %s", buildError)
+  end
+end
+
+-- Reason the panel can't be shown, or nil when it's there.
+function UI.Problem()
+  if buildError then return "the tab failed to build: " .. buildError end
+  if not AuctionHouseFrame then return "the auction house window hasn't loaded; open the auction house first" end
+  if not panel then tryBuild() end
+  if not panel then return "the tab hasn't been built yet" end
 end
 
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function(_, event)
-  if event == "AUCTION_HOUSE_SHOW" then
-    if not panel and AuctionHouseFrame then build() end
+events:SetScript("OnEvent", function(_, event, arg)
+  if event == "AUCTION_HOUSE_SHOW" or event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
+    tryBuild()
+    if not panel and C_Timer then C_Timer.After(0, tryBuild) end -- the window loads this frame
+  elseif event == "ADDON_LOADED" then
+    if arg == "Blizzard_AuctionHouseUI" then tryBuild() end
+  elseif event == "PLAYER_LOGIN" then
+    tryBuild() -- another addon may have loaded the auction window already
   elseif event == "AUCTION_HOUSE_CLOSED" then
     UI.HidePanel()
   elseif event == "GET_ITEM_INFO_RECEIVED" then
     ns.OnDataChanged() -- names and icons for newly cached items
   end
 end)
-for _, event in ipairs({ "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "GET_ITEM_INFO_RECEIVED" }) do
+for _, event in ipairs({ "AUCTION_HOUSE_SHOW", "PLAYER_INTERACTION_MANAGER_FRAME_SHOW", "ADDON_LOADED",
+                         "PLAYER_LOGIN", "AUCTION_HOUSE_CLOSED", "GET_ITEM_INFO_RECEIVED" }) do
   pcall(events.RegisterEvent, events, event)
 end

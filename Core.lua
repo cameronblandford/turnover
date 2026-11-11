@@ -10,7 +10,7 @@ local DEFAULT_SETTINGS = {
   window = 7 * 86400,  -- how far back the rate looks
   chat = true,         -- print what the addon is doing to the chat log
   full = true,         -- periodically scan the whole auction house
-  fullInterval = 300,  -- seconds between full scans
+  fullInterval = 60,   -- seconds between full scans
 }
 local MIN_FULL_INTERVAL = 60
 local DEFAULT_WATCH = { 2770, 2840 } -- Copper Ore, Copper Bar
@@ -198,6 +198,12 @@ local function initDB()
   for k, v in pairs(DEFAULT_SETTINGS) do
     if db.settings[k] == nil then db.settings[k] = v end
   end
+  -- Settings version 2: full scans proved to take seconds, so the default went
+  -- from every 5 minutes to every minute. Move anyone still on the old default.
+  if (db.settingsVersion or 1) < 2 then
+    if db.settings.fullInterval == 300 then db.settings.fullInterval = 60 end
+    db.settingsVersion = 2
+  end
   if not db.watch then
     db.watch = {}
     for _, id in ipairs(DEFAULT_WATCH) do db.watch[id] = true end
@@ -305,6 +311,7 @@ local HELP = {
   "/turnover watch <item> - track an item (shift-click a link, or an item ID)",
   "/turnover unwatch <item> - stop tracking (history is kept)",
   "/turnover scan - scan now (auction house must be open)",
+  "/turnover top - open the Top movers panel (auction house must be open)",
   "/turnover auto on|off - scan automatically while the auction house is open",
   "/turnover interval <seconds> - time between automatic scans",
   "/turnover full on|off|<seconds> - scan the whole auction house periodically",
@@ -334,6 +341,14 @@ SlashCmdList.TURNOVER = function(msg)
     local v = rest:lower()
     if v == "on" or v == "off" then db.settings.auto = (v == "on") end
     say("Auto-scan %s.", db.settings.auto and "on" or "off")
+  elseif cmd == "top" then
+    if not ns.UI then
+      say("Top movers isn't loaded. Restart WoW fully: new addon files only load on a restart, not /reload.")
+      return
+    end
+    local problem = ns.UI.Problem()
+    if problem then say("Can't show Top movers: %s.", problem) return end
+    ns.UI.ShowPanel()
   elseif cmd == "full" then
     local v, n = rest:lower(), tonumber(rest)
     if v == "on" or v == "off" then db.settings.full = (v == "on") end

@@ -51,7 +51,7 @@ single page and includes a watched item, it's recorded at no extra cost.
 
 ### Full scans
 
-Every 5 minutes (while you're idle at the auction house) it also takes a
+Every minute (while you're idle at the auction house) it also takes a
 snapshot of the whole auction house with `C_AuctionHouse.ReplicateItems`.
 That gives rough rates for every item, not just the watchlist. Results are
 read a chunk per frame to avoid a hitch. If another addon runs a full scan,
@@ -96,9 +96,10 @@ Turnover detects the auction house API at runtime:
 | `/turnover watch <item>` | Track an item. Shift-click its link, or give the item ID |
 | `/turnover unwatch <item>` | Stop tracking (history is kept) |
 | `/turnover scan` | Scan now (auction house must be open) |
+| `/turnover top` | Open the Top movers panel, or say why it can't |
 | `/turnover auto on\|off` | Automatic scanning |
 | `/turnover interval <seconds>` | Time between scans (minimum 20) |
-| `/turnover full on\|off\|<seconds>` | Whole-auction-house scans (default every 300s, minimum 60) |
+| `/turnover full on\|off\|<seconds>` | Whole-auction-house scans (default every 60s, the minimum) |
 | `/turnover chat on\|off` | Activity log in the chat window |
 | `/turnover reset <item>\|all` | Forget history on this realm and faction |
 

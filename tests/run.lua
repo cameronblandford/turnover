@@ -79,6 +79,9 @@ local function newEnv()
   _G.AuctionHouseFrame = nil
   _G.C_Timer = { After = function(d, fn) after(d, fn) end }
   _G.ITEM_QUALITY_COLORS = { [1] = { r = 1, g = 1, b = 1 } }
+  _G.PanelTemplates_SelectTab = function(t) t.selected = true end
+  _G.PanelTemplates_DeselectTab = function(t) t.selected = false end
+  _G.PanelTemplates_TabResize = function() end
   _G.hooksecurefunc = function(a, b, c)
     local tbl, name, hook = _G, a, b
     if type(a) == "table" then tbl, name, hook = a, b, c end
@@ -438,6 +441,8 @@ do
   AuctionHouseFrame.Tabs = { widget(), widget(), widget() }
   local addon = loadAddon()
   eq(addon.FullScan.Available(), true, "full-scan API detected")
+  eq(TurnoverDB.settings.fullInterval, 60, "full scans default to every minute")
+  SlashCmdList.TURNOVER("full 300")
   fire("AUCTION_HOUSE_SHOW")
   check(saw("full scan every 5m, watchlist every 60s"), "chat: AH open mentions full scan")
   advance(20)
@@ -491,6 +496,8 @@ do
   eq(UI.panel:IsShown(), false, "panel starts hidden")
   UI.tab.scripts.OnClick(UI.tab)
   eq(UI.panel:IsShown(), true, "clicking the tab shows the panel")
+  eq(UI.tab.selected, true, "our tab drawn as selected")
+  eq(AuctionHouseFrame.Tabs[1].selected, false, "Blizzard tabs drawn as deselected")
   eq(#UI.Data(), 1, "panel lists the ranked item")
   eq(UI.rows[1] and UI.rows[1].itemID, 2589, "first row is Linen Cloth")
   eq(UI.rows[2] and UI.rows[2]:IsShown(), false, "other rows hidden")
@@ -508,6 +515,67 @@ do
   UI.tab.scripts.OnClick(UI.tab)
   fire("AUCTION_HOUSE_CLOSED")
   eq(UI.panel:IsShown(), false, "closing the auction house hides the panel")
+end
+
+---------------------------------------------------------------------------
+-- Saved settings from 0.2 (full scan every 300s) move to every minute
+
+do
+  newEnv()
+  timers = {}
+  _G.TurnoverDB = { settings = { fullInterval = 300 }, watch = { [2770] = true }, realms = {} }
+  loadAddon()
+  eq(TurnoverDB.settings.fullInterval, 60, "old 5-minute default migrated to 60s")
+  eq(TurnoverDB.settingsVersion, 2, "settings version recorded")
+  TurnoverDB.settings.fullInterval = 300 -- a deliberate choice made after migrating
+  fire("ADDON_LOADED", "Turnover")
+  eq(TurnoverDB.settings.fullInterval, 300, "a 300s interval chosen later is kept")
+
+  newEnv()
+  timers = {}
+  _G.TurnoverDB = { settings = { fullInterval = 120 }, watch = {}, realms = {} }
+  loadAddon()
+  eq(TurnoverDB.settings.fullInterval, 120, "custom intervals are left alone")
+end
+
+---------------------------------------------------------------------------
+-- The auction window loads after AUCTION_HOUSE_SHOW: the tab still appears
+
+do
+  newEnv()
+  timers = {}
+  _G.C_AuctionHouse = { MakeItemKey = function(id) return { itemID = id } end, SendSearchQuery = function() end }
+  local addon = loadAddon()
+  SlashCmdList.TURNOVER("top")
+  check(saw("Can't show Top movers: the auction house window hasn't loaded"), "/turnover top explains a missing window")
+  fire("AUCTION_HOUSE_SHOW") -- window not loaded yet
+  eq(addon.UI.panel, nil, "no tab without the window")
+  _G.AuctionHouseFrame = widget()
+  AuctionHouseFrame.Tabs = { widget(), widget(), widget() }
+  advance(0.2) -- next-frame retry
+  check(addon.UI.panel ~= nil, "tab built once the window exists")
+  check(saw("Added the Top movers tab to the auction house."), "chat: tab added")
+  SlashCmdList.TURNOVER("top")
+  eq(addon.UI.panel:IsShown(), true, "/turnover top opens the panel")
+
+  newEnv()
+  timers = {}
+  _G.C_AuctionHouse = { MakeItemKey = function(id) return { itemID = id } end, SendSearchQuery = function() end }
+  local addon2 = loadAddon()
+  _G.AuctionHouseFrame = widget()
+  fire("ADDON_LOADED", "Blizzard_AuctionHouseUI")
+  check(addon2.UI.panel ~= nil, "tab built when Blizzard_AuctionHouseUI loads (no Tabs array)")
+
+  -- A failure while building is reported, not silent.
+  newEnv()
+  timers = {}
+  local addon3 = loadAddon()
+  _G.AuctionHouseFrame = widget()
+  AuctionHouseFrame.GetFrameLevel = function() error("boom") end
+  fire("ADDON_LOADED", "Blizzard_AuctionHouseUI")
+  check(saw("Couldn't add the Top movers tab:"), "build failure reported in chat")
+  SlashCmdList.TURNOVER("top")
+  check(saw("Can't show Top movers: the tab failed to build:"), "/turnover top repeats the build error")
 end
 
 realPrint(("%d passed, %d failed"):format(passed, failures))
