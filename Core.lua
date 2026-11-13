@@ -120,6 +120,34 @@ function ns.Summary(itemID, t, window)
   return summarize(ns.Store.Get(db, ns.FullRealmKey(), itemID), t, true, window) or watched
 end
 
+-- Vendor sell price per unit in copper (0 if it can't be sold to a vendor).
+function ns.VendorPrice(itemID)
+  local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  if not get then return nil end
+  return (select(11, get(itemID)))
+end
+
+-- Cheapest current buyout per unit, from whichever snapshot (watchlist or
+-- full scan) is newest. Returns price (or nil if nothing has a buyout),
+-- snapshot time, units listed; or nil if the item has never been seen.
+function ns.MarketPrice(itemID)
+  if not db then return nil end
+  local newest
+  for _, key in ipairs({ ns.RealmKey(), ns.FullRealmKey() }) do
+    local rec = ns.Store.Get(db, key, itemID)
+    if rec and rec.last and (not newest or rec.last.t > newest.last.t) then newest = rec end
+  end
+  if not newest then return nil end
+  local min
+  for _, l in ipairs(newest.last.listings) do
+    if (l.buyout or 0) > 0 and l.count > 0 then
+      local unit = l.buyout / l.count
+      if not min or unit < min then min = unit end
+    end
+  end
+  return min, newest.last.t, newest.supply or 0
+end
+
 ns.MIN_SEEN = 10 * 60 -- don't rank or show a rate based on less than 10 minutes of watching
 
 -- Every item with sales in the last `window` seconds, unsorted:

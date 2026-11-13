@@ -62,11 +62,11 @@ local function newEnv()
   _G.TooltipDataProcessor, _G.Enum = nil, nil
   _G.QueryAuctionItems, _G.GetAuctionItemInfo, _G.GetNumAuctionItems = nil, nil, nil
   _G.C_AuctionHouse, _G.AuctionFrame = nil, nil
-  local names = { [2770] = { "Copper Ore", 1 }, [2840] = { "Copper Bar", 1 }, [2589] = { "Linen Cloth", 1 } }
+  local names = { [2770] = { "Copper Ore", 1, 5 }, [2840] = { "Copper Bar", 1, 10 }, [2589] = { "Linen Cloth", 1, 13 } }
   _G.C_Item = {
     GetItemInfo = function(id)
       local n = names[id]
-      if n then return n[1], "|Hitem:" .. id .. "|h", n[2] end
+      if n then return n[1], "|Hitem:" .. id .. "|h", n[2], nil, nil, nil, nil, nil, nil, nil, n[3] end
     end,
     RequestLoadItemDataByID = function() end,
   }
@@ -115,7 +115,7 @@ after = function(delay, fn) timers[#timers + 1] = { at = clock + delay, fn = fn 
 local function loadAddon()
   local ns = {}
   for _, file in ipairs({ "Diff.lua", "Store.lua", "Scanner_Legacy.lua", "Scanner_Modern.lua", "FullScan.lua",
-                          "Core.lua", "Tooltip.lua", "UI.lua" }) do
+                          "Core.lua", "Advice.lua", "Tooltip.lua", "UI.lua" }) do
     local chunk = assert(loadfile(file))
     chunk("Turnover", ns)
   end
@@ -201,6 +201,24 @@ do -- no IDs: partial purchase of a commodity row
   local cur = { listing(150, 1500, nil, 40000) }
   local r = Diff.Compare(prev, cur, 60)
   eq(r.soldUnits, 50, "partial purchase without IDs")
+end
+
+---------------------------------------------------------------------------
+-- Advice: vendor or auction?
+
+do
+  assert(loadfile("Advice.lua"))("Turnover", ns)
+  local R = ns.Advice.Recommend
+  eq(R(13, 23, 5, 3600), "auction", "AH nets more and it sells")
+  eq(R(25, 23, 5, 3600), "vendor", "vendor pays more")
+  eq(R(20, 21, 5, 3600), "vendor", "the 5% cut tips it to the vendor")
+  eq(R(10, 20, 0, 7200), "vendor-slow", "AH pays a bit more but nothing sells")
+  eq(R(10, 40, 0, 7200), "auction-slow", "pays 3x the vendor, so auction even though slow")
+  eq(R(0, 20, 0, 7200), "auction-slow", "can't be vendored: auction even if slow")
+  eq(R(10, 20, 0, 600), "auction", "too little watching to call it slow")
+  eq(R(10, nil, 5, 3600), nil, "no auction price, no advice")
+  local _, net = R(13, 20, 5, 3600)
+  eq(net, 19, "net is price less the 5% cut")
 end
 
 ---------------------------------------------------------------------------
@@ -494,6 +512,14 @@ do
   eq(movers[1] and movers[1].id, 2589, "Linen Cloth ranked")
   check(movers[1] and movers[1].gold > 0 and movers[1].fromFull, "value/hr from full-scan data")
   eq(#addon.TopMovers(1), 0, "nothing in a 1-second window")
+
+  -- Tooltip: price, rate and advice.
+  local lines = addon.TooltipLines(2589)
+  check(lines and lines[1]:find("AH 23c each", 1, true), "tooltip shows the cheapest current price")
+  check(lines and lines[1]:find("/hr sold", 1, true), "tooltip shows the sell rate")
+  check(lines and lines[2] and lines[2]:find("Auction it:", 1, true)
+    and lines[2]:find("nets ~22c vs 13c at a vendor", 1, true), "tooltip recommends auctioning, with numbers")
+  eq(addon.TooltipLines(12345), nil, "no lines for items never seen")
 
   -- Top movers: the tab and panel.
   local UI = addon.UI

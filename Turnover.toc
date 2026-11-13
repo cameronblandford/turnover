@@ -13,5 +13,6 @@ Scanner_Legacy.lua
 Scanner_Modern.lua
 FullScan.lua
 Core.lua
+Advice.lua
 Tooltip.lua
 UI.lua

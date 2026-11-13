@@ -6,12 +6,19 @@ house, built for WoW Forever. It adds one line to item tooltips and a
 minimap button:
 
 ```
-Turnover ~142/hr at 12s 30c · 3.2h seen
+Turnover AH 89c each · ~812/hr sold
+Turnover Auction it: nets ~85c vs 5c at a vendor
 ```
 
-That line reads: about 142 units sold per hour, at an average of 12s 30c each,
-based on 3.2 hours of watching. It only appears once an item has been watched
-for 10 minutes.
+The first line shows the cheapest current listing and roughly how many sell
+per hour. The rate appears once an item has been watched for 10 minutes. The
+second line says whether to sell to a vendor or put it up for auction:
+
+- It compares the vendor price with what an auction would actually pay: the
+  cheapest current listing, less the auction house's 5% cut.
+- If an item has been watched for an hour with nothing selling, it says to
+  vendor it instead, unless the auction house pays at least three times the
+  vendor price.
 
 ### Top movers tab
 
