@@ -517,13 +517,24 @@ do
   -- Tooltip: price, rate and advice.
   local rows = addon.TooltipRows(2589)
   eq(rows and #rows, 3, "price, rate and advice rows")
-  check(rows and rows[1][1]:find("AH price", 1, true) and rows[1][2] == "23c", "price row: cheapest current listing")
+  check(rows and rows[1][1]:find("AH price", 1, true) and rows[1][2] == addon.FormatMoney(23), "price row: cheapest current listing")
   eq(rows and rows[2][1], "Sold per hour", "rate row label")
   check(rows and rows[2][2]:find("^~%d"), "rate row value")
   eq(rows and rows[3][1], "Best option", "advice row label")
-  check(rows and rows[3][2]:find("Auction", 1, true) and rows[3][2]:find("(+9c each)", 1, true),
+  check(rows and rows[3][2]:find("Auction", 1, true) and rows[3][2]:find("(+" .. addon.FormatMoney(9) .. " each)", 1, true),
     "advice: auction, 9c more each than the vendor (22c net vs 13c)")
   eq(addon.TooltipRows(12345), nil, "no rows for items never seen")
+
+  -- Money uses the coin icons.
+  local C = "|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0|t"
+  local S = "|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0|t"
+  local G = "|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t"
+  eq(addon.FormatMoney(23), "23" .. C, "copper icon")
+  eq(addon.FormatMoney(282), "2" .. S .. " 82" .. C, "silver and copper icons")
+  eq(addon.FormatMoney(1250000), "125" .. G, "whole gold shows just gold")
+  eq(addon.FormatMoney(10203), "1" .. G .. " 2" .. S .. " 3" .. C, "all three")
+  eq(addon.FormatMoney(0), "0" .. C, "zero")
+  eq(addon.FormatMoney(0.6), "1" .. C, "rounds to the nearest copper")
 
   -- Top movers: the tab and panel.
   local UI = addon.UI

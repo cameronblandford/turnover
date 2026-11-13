@@ -186,13 +186,22 @@ function ns.FormatDuration(s)
   return ("%.1fd"):format(s / 86400)
 end
 
+-- Money with the game's coin icons, e.g. 2[silver] 82[copper]. Built from the
+-- icon textures directly: the coin-string API moved between client versions.
+local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t"
+local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0|t"
+local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0|t"
+
 function ns.FormatMoney(copper)
   copper = math.floor(copper + 0.5)
-  if GetCoinTextureString then return GetCoinTextureString(copper) end
   local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
-  if g > 0 then return ("%dg %ds %dc"):format(g, s, c) end
-  if s > 0 then return ("%ds %dc"):format(s, c) end
-  return ("%dc"):format(c)
+  local parts = {}
+  if g > 0 then
+    parts[#parts + 1] = (BreakUpLargeNumbers and BreakUpLargeNumbers(g) or tostring(g)) .. GOLD_ICON
+  end
+  if s > 0 then parts[#parts + 1] = s .. SILVER_ICON end
+  if c > 0 or #parts == 0 then parts[#parts + 1] = c .. COPPER_ICON end
+  return table.concat(parts, " ")
 end
 
 ---------------------------------------------------------------------------
