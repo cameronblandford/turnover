@@ -37,21 +37,21 @@ end
 
 local GREEN, ORANGE, END = "|cff50e050", "|cffffa040", "|r"
 
--- One line of advice for the tooltip, or nil.
+-- The advice as a short tooltip value, e.g. "Auction (+2s 43c each)", or nil.
+-- The amount is how much more per unit the better option pays.
 function Advice.Text(vendor, price, rate, seen)
   local kind, net = Advice.Recommend(vendor, price, rate, seen)
   if not kind then return nil end
   local money = ns.FormatMoney
   vendor = vendor or 0
   if kind == "vendor" then
-    return ("%sVendor it:%s %s vs ~%s from an auction"):format(ORANGE, END, money(vendor), money(net))
+    return ("%sVendor%s (+%s each)"):format(ORANGE, END, money(vendor - net))
   elseif kind == "vendor-slow" then
-    return ("%sVendor it:%s none sold in %s on the auction house"):format(ORANGE, END, ns.FormatDuration(seen))
+    return ("%sVendor%s (none sold in %s)"):format(ORANGE, END, ns.FormatDuration(seen))
+  elseif kind == "auction-slow" then
+    return ("%sAuction%s (slow: none sold in %s)"):format(GREEN, END, ns.FormatDuration(seen))
+  elseif vendor <= 0 then
+    return ("%sAuction%s (vendors won't buy it)"):format(GREEN, END)
   end
-  local versus = vendor > 0 and (" vs %s at a vendor"):format(money(vendor)) or " (vendors won't buy it)"
-  if kind == "auction-slow" then
-    return ("%sAuction it, but slowly:%s ~%s%s; none sold in %s"):format(
-      GREEN, END, money(net), versus, ns.FormatDuration(seen))
-  end
-  return ("%sAuction it:%s nets ~%s%s"):format(GREEN, END, money(net), versus)
+  return ("%sAuction%s (+%s each)"):format(GREEN, END, money(net - vendor))
 end

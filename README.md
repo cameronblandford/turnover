@@ -1,24 +1,24 @@
 # Turnover
 
 A World of Warcraft addon that estimates **how fast items sell** on the auction
-house, built for WoW Forever. It adds one line to item tooltips and a
+house, built for WoW Forever. It adds a few lines to item tooltips and a
 **Top movers** tab to the auction house, and nothing else: no windows or
 minimap button:
 
 ```
-Turnover AH 89c each · ~812/hr sold
-Turnover Auction it: nets ~85c vs 5c at a vendor
+Turnover AH price        2s 82c (3h old)
+Sold per hour                       ~32
+Best option     Auction (+2s 43c each)
 ```
 
-The first line shows the cheapest current listing and roughly how many sell
-per hour. The rate appears once an item has been watched for 10 minutes. The
-second line says whether to sell to a vendor or put it up for auction:
-
-- It compares the vendor price with what an auction would actually pay: the
-  cheapest current listing, less the auction house's 5% cut.
-- If an item has been watched for an hour with nothing selling, it says to
-  vendor it instead, unless the auction house pays at least three times the
-  vendor price.
+- **AH price:** the cheapest current listing, per unit. Its age is shown once
+  it's over an hour old.
+- **Sold per hour:** appears once the item has been watched for 10 minutes.
+- **Best option:** vendor or auction, and how much more per item that pays.
+  It compares the vendor price with what an auction would actually pay: the
+  cheapest current listing, less the auction house's 5% cut. If an item has
+  been watched for an hour with nothing selling, it says to vendor it
+  instead, unless the auction pays at least three times the vendor price.
 
 ### Top movers tab
 

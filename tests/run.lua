@@ -343,8 +343,9 @@ do
 
   -- Enough data for the tooltip after ~10 minutes of watching.
   advance(600)
-  check(addon.TooltipText(2770) ~= nil, "tooltip line shows after 10 minutes")
-  check(addon.TooltipText(2840) ~= nil, "tooltip line for bars too")
+  local rows = addon.TooltipRows(2770)
+  eq(rows and rows[2] and rows[2][1], "Sold per hour", "sell rate row shows after 10 minutes")
+  check(addon.TooltipRows(2840) ~= nil, "tooltip rows for bars too")
 
   fire("AUCTION_HOUSE_CLOSED")
   eq(addon.Scanners.legacy.Busy(), false, "closing the AH stops scanning")
@@ -514,12 +515,15 @@ do
   eq(#addon.TopMovers(1), 0, "nothing in a 1-second window")
 
   -- Tooltip: price, rate and advice.
-  local lines = addon.TooltipLines(2589)
-  check(lines and lines[1]:find("AH 23c each", 1, true), "tooltip shows the cheapest current price")
-  check(lines and lines[1]:find("/hr sold", 1, true), "tooltip shows the sell rate")
-  check(lines and lines[2] and lines[2]:find("Auction it:", 1, true)
-    and lines[2]:find("nets ~22c vs 13c at a vendor", 1, true), "tooltip recommends auctioning, with numbers")
-  eq(addon.TooltipLines(12345), nil, "no lines for items never seen")
+  local rows = addon.TooltipRows(2589)
+  eq(rows and #rows, 3, "price, rate and advice rows")
+  check(rows and rows[1][1]:find("AH price", 1, true) and rows[1][2] == "23c", "price row: cheapest current listing")
+  eq(rows and rows[2][1], "Sold per hour", "rate row label")
+  check(rows and rows[2][2]:find("^~%d"), "rate row value")
+  eq(rows and rows[3][1], "Best option", "advice row label")
+  check(rows and rows[3][2]:find("Auction", 1, true) and rows[3][2]:find("(+9c each)", 1, true),
+    "advice: auction, 9c more each than the vendor (22c net vs 13c)")
+  eq(addon.TooltipRows(12345), nil, "no rows for items never seen")
 
   -- Top movers: the tab and panel.
   local UI = addon.UI

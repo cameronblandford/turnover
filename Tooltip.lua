@@ -1,50 +1,54 @@
--- Tooltip: up to two lines on items the auction house data covers.
---   Turnover AH 89c each · ~812/hr sold
---   Turnover Auction it: nets ~85c vs 20c at a vendor
+-- Tooltip: label on the left, value on the right, like the game's own
+-- price lines. Only shown for items the auction house data covers.
+--
+--   Turnover AH price        2s 82c (3h old)
+--   Sold per hour                       ~32
+--   Best option     Auction (+2s 43c each)
 
 local _, ns = ...
 
-local LABEL = "|cff8ab4f8Turnover|r "
 local STALE = 60 * 60 -- mention the price's age once it's over an hour old
+local GREY, END = "|cff909090", "|r"
 
-function ns.TooltipLines(itemID, t)
+-- Returns { {left, right}, ... } or nil.
+function ns.TooltipRows(itemID, t)
   t = t or time()
   local price, priceAt = ns.MarketPrice(itemID)
   local s = ns.Summary(itemID, t)
   local rated = s ~= nil and s.seen >= ns.MIN_SEEN
   if not priceAt and not rated then return nil end
 
-  local parts = {}
+  local rows = {}
+  local priceText
   if price then
-    parts[#parts + 1] = "AH " .. ns.FormatMoney(price) .. " each"
+    priceText = ns.FormatMoney(price)
   elseif priceAt then
-    parts[#parts + 1] = "none on the AH"
-  end
-  if rated then
-    local sold = "~" .. ns.FormatRate(s.rate) .. "/hr sold"
-    if not price and s.avg then sold = sold .. " at " .. ns.FormatMoney(s.avg) end
-    parts[#parts + 1] = sold
+    priceText = GREY .. "none listed" .. END
+  else
+    priceText = GREY .. "unknown" .. END
   end
   if priceAt and t - priceAt > STALE then
-    parts[#parts + 1] = "as of " .. ns.FormatDuration(t - priceAt) .. " ago"
+    priceText = priceText .. GREY .. " (" .. ns.FormatDuration(t - priceAt) .. " old)" .. END
+  end
+  rows[#rows + 1] = { "|cff8ab4f8Turnover|r AH price", priceText }
+
+  if rated then
+    local sold = "~" .. ns.FormatRate(s.rate)
+    if not price and s.avg then sold = sold .. GREY .. " at " .. END .. ns.FormatMoney(s.avg) end
+    rows[#rows + 1] = { "Sold per hour", sold }
   end
 
-  local lines = { LABEL .. table.concat(parts, " · ") }
-  local advice = ns.Advice.Text(ns.VendorPrice(itemID), price or (s and s.avg),
-    s and s.rate, s and s.seen)
-  if advice then lines[2] = LABEL .. advice end
-  return lines
+  local advice = ns.Advice.Text(ns.VendorPrice(itemID), price or (s and s.avg), s and s.rate, s and s.seen)
+  if advice then rows[#rows + 1] = { "Best option", advice } end
+  return rows
 end
 
-function ns.TooltipText(itemID)
-  local lines = ns.TooltipLines(itemID)
-  return lines and lines[1]
-end
-
-local function addLines(tooltip, itemID)
-  local lines = itemID and ns.TooltipLines(itemID)
-  if not lines then return end
-  for _, text in ipairs(lines) do tooltip:AddLine(text, 0.7, 0.7, 0.7) end
+local function addRows(tooltip, itemID)
+  local rows = itemID and ns.TooltipRows(itemID)
+  if not rows then return end
+  for _, row in ipairs(rows) do
+    tooltip:AddDoubleLine(row[1], row[2], 1, 0.82, 0, 1, 1, 1)
+  end
 end
 
 local function wanted(tooltip)
@@ -54,12 +58,12 @@ end
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
     and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item then
   TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-    if wanted(tooltip) and data and type(data.id) == "number" then addLines(tooltip, data.id) end
+    if wanted(tooltip) and data and type(data.id) == "number" then addRows(tooltip, data.id) end
   end)
 else
   local function onSetItem(tooltip)
     local _, link = tooltip:GetItem()
-    addLines(tooltip, link and tonumber(link:match("item:(%d+)")))
+    addRows(tooltip, link and tonumber(link:match("item:(%d+)")))
   end
   for _, tooltip in ipairs({ GameTooltip, ItemRefTooltip }) do
     if tooltip then tooltip:HookScript("OnTooltipSetItem", onSetItem) end
